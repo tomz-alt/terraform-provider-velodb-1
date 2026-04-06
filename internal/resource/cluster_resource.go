@@ -377,10 +377,48 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	// Handle attribute updates (name, vcpu, cache, billing, auto_pause)
+	// Handle compute_vcpu and cache_gb separately — API does not allow both in one call
+	vcpuChanged := !plan.ComputeVcpu.Equal(state.ComputeVcpu)
+	cacheChanged := !plan.CacheGb.Equal(state.CacheGb)
+
+	if vcpuChanged {
+		v := int(plan.ComputeVcpu.ValueInt64())
+		if err := r.client.UpdateCluster(ctx, warehouseID, clusterID, &client.UpdateClusterRequest{ComputeVcpu: &v}); err != nil {
+			resp.Diagnostics.AddError("Error resizing cluster (compute_vcpu)", err.Error())
+			return
+		}
+		_, err := client.WaitForStatus(ctx, func(ctx context.Context) (string, error) {
+			cl, err := r.client.GetCluster(ctx, warehouseID, clusterID)
+			if err != nil {
+				return "", err
+			}
+			return cl.Status, nil
+		}, client.StableStatuses, client.FailedStatuses, updateTimeout, 15*time.Second)
+		if err != nil {
+			resp.Diagnostics.AddWarning("Cluster vcpu resize may still be in progress", err.Error())
+		}
+	}
+
+	if cacheChanged {
+		v := int(plan.CacheGb.ValueInt64())
+		if err := r.client.UpdateCluster(ctx, warehouseID, clusterID, &client.UpdateClusterRequest{CacheGb: &v}); err != nil {
+			resp.Diagnostics.AddError("Error resizing cluster (cache_gb)", err.Error())
+			return
+		}
+		_, err := client.WaitForStatus(ctx, func(ctx context.Context) (string, error) {
+			cl, err := r.client.GetCluster(ctx, warehouseID, clusterID)
+			if err != nil {
+				return "", err
+			}
+			return cl.Status, nil
+		}, client.StableStatuses, client.FailedStatuses, updateTimeout, 15*time.Second)
+		if err != nil {
+			resp.Diagnostics.AddWarning("Cluster cache resize may still be in progress", err.Error())
+		}
+	}
+
+	// Handle other attribute updates (name, billing, auto_pause)
 	needsUpdate := !plan.Name.Equal(state.Name) ||
-		!plan.ComputeVcpu.Equal(state.ComputeVcpu) ||
-		!plan.CacheGb.Equal(state.CacheGb) ||
 		!plan.BillingMethod.Equal(state.BillingMethod) ||
 		!plan.Period.Equal(state.Period) ||
 		!plan.PeriodUnit.Equal(state.PeriodUnit) ||
@@ -392,14 +430,6 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		if !plan.Name.Equal(state.Name) {
 			s := plan.Name.ValueString()
 			updateReq.Name = &s
-		}
-		if !plan.ComputeVcpu.Equal(state.ComputeVcpu) {
-			v := int(plan.ComputeVcpu.ValueInt64())
-			updateReq.ComputeVcpu = &v
-		}
-		if !plan.CacheGb.Equal(state.CacheGb) {
-			v := int(plan.CacheGb.ValueInt64())
-			updateReq.CacheGb = &v
 		}
 		setOptionalString(&updateReq.BillingMethod, plan.BillingMethod)
 		setOptionalIntFromInt64(&updateReq.Period, plan.Period)
@@ -416,20 +446,6 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		if err := r.client.UpdateCluster(ctx, warehouseID, clusterID, updateReq); err != nil {
 			resp.Diagnostics.AddError("Error updating cluster", err.Error())
 			return
-		}
-
-		// Wait for stable state after resize
-		if !plan.ComputeVcpu.Equal(state.ComputeVcpu) || !plan.CacheGb.Equal(state.CacheGb) {
-			_, err := client.WaitForStatus(ctx, func(ctx context.Context) (string, error) {
-				cl, err := r.client.GetCluster(ctx, warehouseID, clusterID)
-				if err != nil {
-					return "", err
-				}
-				return cl.Status, nil
-			}, client.StableStatuses, client.FailedStatuses, updateTimeout, 15*time.Second)
-			if err != nil {
-				resp.Diagnostics.AddWarning("Cluster resize may still be in progress", err.Error())
-			}
 		}
 	}
 
