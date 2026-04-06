@@ -314,7 +314,7 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 				return "", err
 			}
 			return cl.Status, nil
-		}, []string{"Suspended"}, client.FailedStatuses, createTimeout, 10*time.Second)
+		}, []string{"Suspended", "Stopped"}, client.FailedStatuses, createTimeout, 10*time.Second)
 	}
 
 	r.readClusterIntoState(ctx, warehouseID, result.ClusterID, &plan, &resp.Diagnostics)
@@ -363,14 +363,14 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 				resp.Diagnostics.AddError("Error performing cluster action", err.Error())
 				return
 			}
-			targetStatus := desiredStateToStatus(plan.DesiredState.ValueString())
+			targetStatuses := desiredStateToStatuses(plan.DesiredState.ValueString())
 			_, err := client.WaitForStatus(ctx, func(ctx context.Context) (string, error) {
 				cl, err := r.client.GetCluster(ctx, warehouseID, clusterID)
 				if err != nil {
 					return "", err
 				}
 				return cl.Status, nil
-			}, []string{targetStatus}, client.FailedStatuses, updateTimeout, 10*time.Second)
+			}, targetStatuses, client.FailedStatuses, updateTimeout, 10*time.Second)
 			if err != nil {
 				resp.Diagnostics.AddWarning("Cluster action may still be in progress", err.Error())
 			}
@@ -583,24 +583,22 @@ func (r *ClusterResource) resolveAction(currentDesired, newDesired string) strin
 	return ""
 }
 
-// desiredStateToStatus maps desired_state to the expected API status.
-func desiredStateToStatus(desired string) string {
+// desiredStateToStatuses maps desired_state to the expected API statuses.
+func desiredStateToStatuses(desired string) []string {
 	switch desired {
 	case "running":
-		return "Running"
+		return []string{"Running"}
 	case "paused":
-		return "Suspended"
+		return []string{"Suspended", "Stopped"}
 	default:
-		return "Running"
+		return []string{"Running"}
 	}
 }
 
 // statusToDesiredState maps API status to the Terraform desired_state value.
 func statusToDesiredState(status string) string {
 	switch status {
-	case "Suspended":
-		return "paused"
-	case "Stopped":
+	case "Suspended", "Stopped":
 		return "paused"
 	default:
 		return "running"
