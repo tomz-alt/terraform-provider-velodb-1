@@ -594,10 +594,10 @@ func (r *WarehouseResource) Update(ctx context.Context, req resource.UpdateReque
 		}
 	}
 
-	// Change password if version bumped
-	if !plan.AdminPasswordVersion.IsNull() && !plan.AdminPasswordVersion.IsUnknown() &&
-		!plan.AdminPasswordVersion.Equal(state.AdminPasswordVersion) &&
-		!plan.AdminPassword.IsNull() && !plan.AdminPassword.IsUnknown() {
+	// Change password if password changed or version bumped
+	if !plan.AdminPassword.IsNull() && !plan.AdminPassword.IsUnknown() &&
+		(!plan.AdminPassword.Equal(state.AdminPassword) ||
+			!plan.AdminPasswordVersion.Equal(state.AdminPasswordVersion)) {
 		if err := r.client.ChangeWarehousePassword(ctx, warehouseID, plan.AdminPassword.ValueString()); err != nil {
 			resp.Diagnostics.AddError("Error changing warehouse password", err.Error())
 			return
