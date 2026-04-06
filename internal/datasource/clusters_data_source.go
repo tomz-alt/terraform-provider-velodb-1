@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
+	"strings"
+
 	"github.com/velodb/terraform-provider-velodb/internal/client"
 )
 
@@ -148,8 +150,17 @@ func (d *ClustersDataSource) Read(ctx context.Context, req datasource.ReadReques
 		"expire_time":    types.StringType,
 	}
 
-	var items []attr.Value
+	// Filter out internal/system clusters (e.g., "meta" cluster with m- prefix)
+	var filtered []client.ClusterItem
 	for _, cl := range result.Data {
+		if strings.HasPrefix(cl.ClusterID, "m-") {
+			continue
+		}
+		filtered = append(filtered, cl)
+	}
+
+	var items []attr.Value
+	for _, cl := range filtered {
 		createdAt := types.StringNull()
 		if cl.CreatedAt != nil {
 			createdAt = types.StringValue(cl.CreatedAt.Format(time.RFC3339))
@@ -191,7 +202,7 @@ func (d *ClustersDataSource) Read(ctx context.Context, req datasource.ReadReques
 	resp.Diagnostics.Append(diags...)
 
 	config.Clusters = list
-	config.Total = types.Int64Value(result.Total)
+	config.Total = types.Int64Value(int64(len(filtered)))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
