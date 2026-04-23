@@ -402,11 +402,10 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	// Preserve config-only fields that the API doesn't return (or may drift)
+	// Preserve config-only fields that the API doesn't return
 	priorSub := state.Subscription
 	priorOd := state.OnDemand
 	priorAutoPause := state.AutoPause
-	priorDesired := state.DesiredState
 	priorRebootTrigger := state.RebootTrigger
 	priorTimeouts := state.Timeouts
 
@@ -415,10 +414,11 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	// desired_state should reflect the actual cluster status (drift detection).
+	// readClusterIntoState already sets it via statusToDesiredState.
 	state.Subscription = priorSub
 	state.OnDemand = priorOd
 	state.AutoPause = priorAutoPause
-	state.DesiredState = priorDesired
 	state.RebootTrigger = priorRebootTrigger
 	state.Timeouts = priorTimeouts
 
@@ -466,24 +466,39 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	// 1. desired_state transitions (pause/resume)
+	// 1. desired_state transitions (pause/resume) — only if cluster isn't already there
 	if !plan.DesiredState.Equal(state.DesiredState) {
 		action := r.resolveAction(plan.DesiredState.ValueString())
+		targetStatuses := desiredStateToStatuses(plan.DesiredState.ValueString())
 		if action != "" {
-			if err := r.client.OperateCluster(ctx, warehouseID, clusterID, action); err != nil {
-				resp.Diagnostics.AddError("Error performing cluster action", err.Error())
+			// Check current status — skip action if already in desired state
+			cur, err := r.client.GetCluster(ctx, warehouseID, clusterID)
+			if err != nil {
+				resp.Diagnostics.AddError("Error reading cluster before action", err.Error())
 				return
 			}
-			targetStatuses := desiredStateToStatuses(plan.DesiredState.ValueString())
-			_, err := client.WaitForStatus(ctx, func(ctx context.Context) (string, error) {
-				cl, err := r.client.GetCluster(ctx, warehouseID, clusterID)
-				if err != nil {
-					return "", err
+			alreadyThere := false
+			for _, s := range targetStatuses {
+				if cur.Status == s {
+					alreadyThere = true
+					break
 				}
-				return cl.Status, nil
-			}, targetStatuses, client.FailedStatuses, updateTimeout, 10*time.Second)
-			if err != nil {
-				resp.Diagnostics.AddWarning("Cluster action may still be in progress", err.Error())
+			}
+			if !alreadyThere {
+				if err := r.client.OperateCluster(ctx, warehouseID, clusterID, action); err != nil {
+					resp.Diagnostics.AddError("Error performing cluster action", err.Error())
+					return
+				}
+				_, err := client.WaitForStatus(ctx, func(ctx context.Context) (string, error) {
+					cl, err := r.client.GetCluster(ctx, warehouseID, clusterID)
+					if err != nil {
+						return "", err
+					}
+					return cl.Status, nil
+				}, targetStatuses, client.FailedStatuses, updateTimeout, 10*time.Second)
+				if err != nil {
+					resp.Diagnostics.AddWarning("Cluster action may still be in progress", err.Error())
+				}
 			}
 		}
 	}
