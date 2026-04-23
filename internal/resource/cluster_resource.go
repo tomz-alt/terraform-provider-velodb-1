@@ -35,20 +35,23 @@ func NewClusterResource() resource.Resource {
 // --- Terraform model ---
 
 type ClusterResourceModel struct {
-	ID               types.String   `tfsdk:"id"`
-	WarehouseID      types.String   `tfsdk:"warehouse_id"`
-	Name             types.String   `tfsdk:"name"`
-	ClusterType      types.String   `tfsdk:"cluster_type"`
-	ComputeVcpu      types.Int64    `tfsdk:"compute_vcpu"`
-	CacheGb          types.Int64    `tfsdk:"cache_gb"`
-	Zone             types.String   `tfsdk:"zone"`
-	DesiredState     types.String   `tfsdk:"desired_state"`
-	BillingModel    types.String   `tfsdk:"billing_model"`
-	Period           types.Int64    `tfsdk:"period"`
-	PeriodUnit       types.String   `tfsdk:"period_unit"`
-	AutoRenewEnabled types.Int64    `tfsdk:"auto_renew_enabled"`
-	AutoPause        types.List     `tfsdk:"auto_pause"`
-	Timeouts         timeouts.Value `tfsdk:"timeouts"`
+	ID                types.String   `tfsdk:"id"`
+	WarehouseID       types.String   `tfsdk:"warehouse_id"`
+	Name              types.String   `tfsdk:"name"`
+	ClusterType       types.String   `tfsdk:"cluster_type"`
+	ComputeVcpu       types.Int64    `tfsdk:"compute_vcpu"`
+	CacheGb           types.Int64    `tfsdk:"cache_gb"`
+	Zone              types.String   `tfsdk:"zone"`
+	DesiredState      types.String   `tfsdk:"desired_state"`
+	BillingModel      types.String   `tfsdk:"billing_model"`
+	Period            types.Int64    `tfsdk:"period"`
+	PeriodUnit        types.String   `tfsdk:"period_unit"`
+	AutoRenewEnabled  types.Int64    `tfsdk:"auto_renew_enabled"`
+	OnDemandNodeCount types.Int64    `tfsdk:"on_demand_node_count"`
+	RebootTrigger     types.Int64    `tfsdk:"reboot_trigger"`
+	RenewTrigger      types.Int64    `tfsdk:"renew_trigger"`
+	AutoPause         types.List     `tfsdk:"auto_pause"`
+	Timeouts          timeouts.Value `tfsdk:"timeouts"`
 	// Computed
 	Status        types.String `tfsdk:"status"`
 	CloudProvider types.String `tfsdk:"cloud_provider"`
@@ -139,7 +142,19 @@ func (r *ClusterResource) Schema(ctx context.Context, _ resource.SchemaRequest, 
 				Optional:    true,
 			},
 			"auto_renew_enabled": schema.Int64Attribute{
-				Description: "Auto-renew flag for prepaid billing.",
+				Description: "Auto-renew flag for subscription billing.",
+				Optional:    true,
+			},
+			"on_demand_node_count": schema.Int64Attribute{
+				Description: "Number of on-demand nodes when converting to a mixed subscription billing model. Used only when transitioning billing_model from on_demand to subscription with retained on-demand capacity.",
+				Optional:    true,
+			},
+			"reboot_trigger": schema.Int64Attribute{
+				Description: "Increment this value to trigger a cluster reboot. The reboot action is called only when the value changes from the prior state.",
+				Optional:    true,
+			},
+			"renew_trigger": schema.Int64Attribute{
+				Description: "Increment this value to trigger a renewal for subscription clusters. Requires period and period_unit to be set. Renewal is called only when the value changes from the prior state.",
 				Optional:    true,
 			},
 			// Computed
@@ -332,6 +347,9 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 	priorAutoRenewEnabled := state.AutoRenewEnabled
 	priorPeriod := state.Period
 	priorPeriodUnit := state.PeriodUnit
+	priorOnDemandNodeCount := state.OnDemandNodeCount
+	priorRebootTrigger := state.RebootTrigger
+	priorRenewTrigger := state.RenewTrigger
 	priorTimeouts := state.Timeouts
 
 	r.readClusterIntoState(ctx, state.WarehouseID.ValueString(), state.ID.ValueString(), &state, &resp.Diagnostics)
@@ -346,6 +364,9 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 	state.AutoRenewEnabled = priorAutoRenewEnabled
 	state.Period = priorPeriod
 	state.PeriodUnit = priorPeriodUnit
+	state.OnDemandNodeCount = priorOnDemandNodeCount
+	state.RebootTrigger = priorRebootTrigger
+	state.RenewTrigger = priorRenewTrigger
 	state.Timeouts = priorTimeouts
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -436,9 +457,86 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		}
 	}
 
-	// Handle other attribute updates (name, billing, auto_pause)
+	// Handle billing_model change: on_demand -> subscription via /convert-to-subscription
+	// Other billing_model transitions go through generic PATCH below.
+	billingModelChanged := !plan.BillingModel.Equal(state.BillingModel) &&
+		!state.BillingModel.IsNull() && state.BillingModel.ValueString() != ""
+	if billingModelChanged && plan.BillingModel.ValueString() == "subscription" {
+		if plan.Period.IsNull() || plan.PeriodUnit.IsNull() {
+			resp.Diagnostics.AddError(
+				"Invalid billing_model change",
+				"Converting billing_model to 'subscription' requires both 'period' and 'period_unit' to be set.",
+			)
+			return
+		}
+		convReq := &client.ConvertToSubscriptionRequest{
+			Period:     int(plan.Period.ValueInt64()),
+			PeriodUnit: plan.PeriodUnit.ValueString(),
+		}
+		if !plan.AutoRenewEnabled.IsNull() && !plan.AutoRenewEnabled.IsUnknown() {
+			v := int(plan.AutoRenewEnabled.ValueInt64())
+			convReq.AutoRenewEnabled = &v
+		}
+		if !plan.OnDemandNodeCount.IsNull() && !plan.OnDemandNodeCount.IsUnknown() {
+			v := int(plan.OnDemandNodeCount.ValueInt64())
+			convReq.OnDemandNodeCount = &v
+		}
+		if err := r.client.ConvertClusterToSubscription(ctx, warehouseID, clusterID, convReq); err != nil {
+			resp.Diagnostics.AddError("Error converting cluster to subscription", err.Error())
+			return
+		}
+		// Mark as handled so generic PATCH doesn't also send billing_model
+		billingModelChanged = false
+	}
+
+	// Handle reboot_trigger changes
+	rebootTriggered := !plan.RebootTrigger.IsNull() && !plan.RebootTrigger.IsUnknown() &&
+		!plan.RebootTrigger.Equal(state.RebootTrigger)
+	if rebootTriggered {
+		if err := r.client.RebootCluster(ctx, warehouseID, clusterID); err != nil {
+			resp.Diagnostics.AddError("Error rebooting cluster", err.Error())
+			return
+		}
+		_, err := client.WaitForStatus(ctx, func(ctx context.Context) (string, error) {
+			cl, err := r.client.GetCluster(ctx, warehouseID, clusterID)
+			if err != nil {
+				return "", err
+			}
+			return cl.Status, nil
+		}, []string{"Running"}, client.FailedStatuses, updateTimeout, 10*time.Second)
+		if err != nil {
+			resp.Diagnostics.AddWarning("Cluster reboot may still be in progress", err.Error())
+		}
+	}
+
+	// Handle renew_trigger changes (subscription clusters only)
+	renewTriggered := !plan.RenewTrigger.IsNull() && !plan.RenewTrigger.IsUnknown() &&
+		!plan.RenewTrigger.Equal(state.RenewTrigger)
+	if renewTriggered {
+		if plan.Period.IsNull() || plan.PeriodUnit.IsNull() {
+			resp.Diagnostics.AddError(
+				"Invalid renew_trigger",
+				"Renewing a cluster requires both 'period' and 'period_unit' to be set.",
+			)
+			return
+		}
+		renewReq := &client.RenewClusterRequest{
+			Period:     int(plan.Period.ValueInt64()),
+			PeriodUnit: plan.PeriodUnit.ValueString(),
+		}
+		if !plan.AutoRenewEnabled.IsNull() && !plan.AutoRenewEnabled.IsUnknown() {
+			v := int(plan.AutoRenewEnabled.ValueInt64())
+			renewReq.AutoRenewEnabled = &v
+		}
+		if err := r.client.RenewCluster(ctx, warehouseID, clusterID, renewReq); err != nil {
+			resp.Diagnostics.AddError("Error renewing cluster", err.Error())
+			return
+		}
+	}
+
+	// Handle other attribute updates (name, auto_renew, auto_pause, plus billing_model for non-convert paths)
 	needsUpdate := !plan.Name.Equal(state.Name) ||
-		!plan.BillingModel.Equal(state.BillingModel) ||
+		billingModelChanged ||
 		!plan.Period.Equal(state.Period) ||
 		!plan.PeriodUnit.Equal(state.PeriodUnit) ||
 		!plan.AutoRenewEnabled.Equal(state.AutoRenewEnabled) ||
@@ -450,7 +548,9 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 			s := plan.Name.ValueString()
 			updateReq.Name = &s
 		}
-		setOptionalString(&updateReq.BillingModel, plan.BillingModel)
+		if billingModelChanged {
+			setOptionalString(&updateReq.BillingModel, plan.BillingModel)
+		}
 		setOptionalIntFromInt64(&updateReq.Period, plan.Period)
 		setOptionalString(&updateReq.PeriodUnit, plan.PeriodUnit)
 		if !plan.AutoRenewEnabled.IsNull() && !plan.AutoRenewEnabled.IsUnknown() {
