@@ -42,7 +42,7 @@ type WarehouseResourceModel struct {
 	DeploymentMode           types.String  `tfsdk:"deployment_mode"`
 	CloudProvider            types.String  `tfsdk:"cloud_provider"`
 	Region                   types.String  `tfsdk:"region"`
-	CreateMode               types.String  `tfsdk:"create_mode"`
+	SetupMode               types.String  `tfsdk:"setup_mode"`
 	VpcMode                  types.String  `tfsdk:"vpc_mode"`
 	VpcID                    types.String  `tfsdk:"vpc_id"`
 	CredentialID             types.Int64   `tfsdk:"credential_id"`
@@ -140,8 +140,8 @@ func (r *WarehouseResource) Schema(ctx context.Context, _ resource.SchemaRequest
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"create_mode": schema.StringAttribute{
-				Description: "BYOC creation mode: Template or Wizard.",
+			"setup_mode": schema.StringAttribute{
+				Description: "BYOC setup mode: `guided` (CloudFormation template) or `advanced` (pre-existing AWS resources — IaC-friendly).",
 				Optional:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -397,7 +397,7 @@ func (r *WarehouseResource) Create(ctx context.Context, req resource.CreateReque
 		Region:         plan.Region.ValueString(),
 	}
 	setOptionalString(&createReq.VpcMode, plan.VpcMode)
-	setOptionalString(&createReq.CreateMode, plan.CreateMode)
+	setOptionalString(&createReq.SetupMode, plan.SetupMode)
 	setOptionalString(&createReq.VpcID, plan.VpcID)
 	setOptionalInt64(&createReq.CredentialID, plan.CredentialID)
 	setOptionalInt64(&createReq.NetworkConfigID, plan.NetworkConfigID)

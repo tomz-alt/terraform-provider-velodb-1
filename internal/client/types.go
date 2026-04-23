@@ -31,7 +31,7 @@ type CreateWarehouseRequest struct {
 	CloudProvider           string                 `json:"cloudProvider"`
 	Region                  string                 `json:"region"`
 	VpcMode                 *string                `json:"vpcMode,omitempty"`
-	CreateMode              *string                `json:"createMode,omitempty"`
+	SetupMode               *string                `json:"setupMode,omitempty"`
 	VpcID                   *string                `json:"vpcId,omitempty"`
 	CredentialID            *int64                 `json:"credentialId,omitempty"`
 	NetworkConfigID         *int64                 `json:"networkConfigId,omitempty"`

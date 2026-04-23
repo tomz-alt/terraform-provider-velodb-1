@@ -32,7 +32,7 @@ resource "velodb_warehouse" "byoc" {
   deployment_mode = "BYOC"
   cloud_provider  = "aliyun"
   region          = "cn-beijing"
-  create_mode     = "Template"
+  setup_mode     = "guided"
   vpc_mode        = "existing"
   vpc_id          = "vpc-xxxxxx"
 

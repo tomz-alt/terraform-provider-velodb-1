@@ -114,7 +114,14 @@ func mockAPIServer(t *testing.T) *httptest.Server {
 			"clusterId": "CL-MOCK-001", "warehouseId": "WH-MOCK-001",
 			"name": "mock-cluster", "status": "Running", "clusterType": "COMPUTE",
 			"cloudProvider": "aliyun", "region": "cn-beijing", "zone": "cn-beijing-k",
-			"payType": "PostPaid", "createdAt": now.Format(time.RFC3339),
+			"billingModel": "on_demand", "createdAt": now.Format(time.RFC3339),
+			"billingPools": map[string]any{
+				"onDemand": map[string]any{"nodeCount": 1, "cpu": 4, "diskSizeGb": 100},
+			},
+			"billingSummary": map[string]any{
+				"isMixedBilling": false, "nodeCount": 1, "onDemandNodeCount": 1,
+				"totalCpu": 4, "totalDiskSizeGb": 100,
+			},
 			"connectionInfo": map[string]any{
 				"publicEndpoint": "cl-mock.selectdbcloud.com", "privateEndpoint": "cl-mock.internal", "listenerPort": 9030,
 			},

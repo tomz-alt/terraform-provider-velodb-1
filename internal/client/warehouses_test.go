@@ -103,8 +103,8 @@ func TestCreateWarehouseBYOC(t *testing.T) {
 		if req.VpcID == nil || *req.VpcID != "vpc-xxxxxx" {
 			t.Error("expected vpcId 'vpc-xxxxxx'")
 		}
-		if req.CreateMode == nil || *req.CreateMode != "Template" {
-			t.Error("expected createMode 'Template'")
+		if req.SetupMode == nil || *req.SetupMode != "guided" {
+			t.Error("expected setupMode 'guided'")
 		}
 
 		jsonResponse(w, 200, APIResponse[CreateWarehouseResult]{
@@ -124,7 +124,7 @@ func TestCreateWarehouseBYOC(t *testing.T) {
 
 	vpcMode := "existing"
 	vpcID := "vpc-xxxxxx"
-	createMode := "Template"
+	setupMode := "guided"
 	pw := "asdAAQQ123"
 	result, err := client.CreateWarehouse(context.Background(), &CreateWarehouseRequest{
 		Name:           "My_Warehouse",
@@ -133,7 +133,7 @@ func TestCreateWarehouseBYOC(t *testing.T) {
 		Region:         "cn-beijing",
 		VpcMode:        &vpcMode,
 		VpcID:          &vpcID,
-		CreateMode:     &createMode,
+		SetupMode:     &setupMode,
 		AdminPassword:  &pw,
 		InitialCluster: &InitialClusterRequest{
 			Name:        "default-compute",

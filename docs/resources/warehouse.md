@@ -65,7 +65,7 @@ resource "velodb_warehouse" "production" {
   deployment_mode = "BYOC"
   cloud_provider  = "aliyun"
   region          = "cn-beijing"
-  create_mode     = "Template"
+  setup_mode     = "guided"
   vpc_mode        = "existing"
   vpc_id          = "vpc-2ze1234567890abcdef"
 
@@ -116,7 +116,7 @@ resource "velodb_warehouse" "aws_byoc" {
   deployment_mode = "BYOC"
   cloud_provider  = "aws"
   region          = "us-east-1"
-  create_mode     = "Wizard"
+  setup_mode     = "advanced"
 
   credential_id            = 12345
   network_config_id        = 67890
@@ -261,7 +261,7 @@ To **destroy the initial cluster later**:
 - `advanced_settings` (String) Advanced settings as a JSON string. Use `jsonencode()` to construct the value. Updated via the warehouse settings API.
 - `bucket_name` (String) Existing object storage bucket name for Wizard mode. Changing this forces a new resource.
 - `core_version` (String) Core version string. Changing this triggers a warehouse upgrade workflow. Computed from the API if not set.
-- `create_mode` (String) BYOC creation mode: `Template` or `Wizard`. `Wizard` is only supported for `aws`. Changing this forces a new resource.
+- `setup_mode` (String) BYOC creation mode: `Template` or `Wizard`. `Wizard` is only supported for `aws`. Changing this forces a new resource.
 - `credential_id` (Number) Credential identifier for Wizard mode. Changing this forces a new resource.
 - `data_credential_arn` (String) Data plane credential ARN for direct cloud-resource flows. Changing this forces a new resource.
 - `deployment_credential_arn` (String) Deployment credential ARN for direct cloud-resource flows. Changing this forces a new resource.

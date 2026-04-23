@@ -262,7 +262,7 @@ resource "velodb_warehouse" "production" {
   deployment_mode = "BYOC"
   cloud_provider  = "aliyun"
   region          = "cn-beijing"
-  create_mode     = "Template"
+  setup_mode     = "guided"
   vpc_mode        = "existing"
   vpc_id          = "vpc-2ze1234567890abcdef"
 
@@ -310,7 +310,7 @@ resource "velodb_warehouse" "aws_byoc" {
   deployment_mode = "BYOC"
   cloud_provider  = "aws"
   region          = "us-east-1"
-  create_mode     = "Wizard"
+  setup_mode     = "advanced"
 
   credential_id             = 12345
   network_config_id         = 67890
@@ -421,7 +421,7 @@ resource "velodb_cluster" "initial" {
 - `advanced_settings` (String) Advanced settings as a JSON string. Use `jsonencode()`.
 - `bucket_name` (String) Object storage bucket name for Wizard mode. Forces new resource.
 - `core_version` (String) Core version. Changing triggers an upgrade workflow. Computed if not set.
-- `create_mode` (String) BYOC creation mode: `Template` or `Wizard`. Forces new resource.
+- `setup_mode` (String) BYOC creation mode: `Template` or `Wizard`. Forces new resource.
 - `credential_id` (Number) Credential identifier for Wizard mode. Forces new resource.
 - `data_credential_arn` (String) Data plane credential ARN. Forces new resource.
 - `deployment_credential_arn` (String) Deployment credential ARN. Forces new resource.
