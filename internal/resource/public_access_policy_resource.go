@@ -217,7 +217,7 @@ func (r *PublicAccessPolicyResource) readIntoState(ctx context.Context, state *P
 	}
 
 	var rules []attr.Value
-	for _, rl := range conn.Rules {
+	for _, rl := range conn.Allowlist {
 		obj, d := types.ObjectValue(allowlistRuleAttrTypes(), map[string]attr.Value{
 			"cidr":        types.StringValue(rl.CIDR),
 			"description": types.StringValue(rl.Description),

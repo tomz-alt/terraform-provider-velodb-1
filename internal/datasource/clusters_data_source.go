@@ -30,7 +30,7 @@ type ClustersDataSourceModel struct {
 	Keyword     types.String `tfsdk:"keyword"`
 	Status      types.String `tfsdk:"status"`
 	ClusterType types.String `tfsdk:"cluster_type"`
-	PayType     types.String `tfsdk:"pay_type"`
+	BillingModel types.String `tfsdk:"billing_model"`
 	Clusters    types.List   `tfsdk:"clusters"`
 	Total       types.Int64  `tfsdk:"total"`
 }
@@ -59,7 +59,7 @@ func (d *ClustersDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 				Description: "Cluster type filter: SQL, COMPUTE, or OBSERVER.",
 				Optional:    true,
 			},
-			"pay_type": schema.StringAttribute{
+			"billing_model": schema.StringAttribute{
 				Description: "Pay type filter: PostPaid or PrePaid.",
 				Optional:    true,
 			},
@@ -81,7 +81,7 @@ func (d *ClustersDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 						"region":         schema.StringAttribute{Computed: true},
 						"zone":           schema.StringAttribute{Computed: true},
 						"disk_sum_size":  schema.Int64Attribute{Computed: true},
-						"pay_type":       schema.StringAttribute{Computed: true},
+						"billing_model":       schema.StringAttribute{Computed: true},
 						"created_at":     schema.StringAttribute{Computed: true},
 						"started_at":     schema.StringAttribute{Computed: true},
 						"expire_time":    schema.StringAttribute{Computed: true},
@@ -124,8 +124,8 @@ func (d *ClustersDataSource) Read(ctx context.Context, req datasource.ReadReques
 	if !config.ClusterType.IsNull() {
 		opts.ClusterType = config.ClusterType.ValueString()
 	}
-	if !config.PayType.IsNull() {
-		opts.PayType = config.PayType.ValueString()
+	if !config.BillingModel.IsNull() {
+		opts.BillingModel = config.BillingModel.ValueString()
 	}
 
 	result, err := d.client.ListClusters(ctx, config.WarehouseID.ValueString(), opts)
@@ -144,7 +144,7 @@ func (d *ClustersDataSource) Read(ctx context.Context, req datasource.ReadReques
 		"region":         types.StringType,
 		"zone":           types.StringType,
 		"disk_sum_size":  types.Int64Type,
-		"pay_type":       types.StringType,
+		"billing_model":       types.StringType,
 		"created_at":     types.StringType,
 		"started_at":     types.StringType,
 		"expire_time":    types.StringType,
@@ -189,7 +189,7 @@ func (d *ClustersDataSource) Read(ctx context.Context, req datasource.ReadReques
 			"region":         stringVal(cl.Region),
 			"zone":           stringVal(cl.Zone),
 			"disk_sum_size":  diskSize,
-			"pay_type":       stringVal(cl.PayType),
+			"billing_model":       stringVal(cl.BillingModel),
 			"created_at":     createdAt,
 			"started_at":     startedAt,
 			"expire_time":    expireTime,

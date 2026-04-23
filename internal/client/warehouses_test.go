@@ -495,32 +495,18 @@ func TestGetWarehouseConnections(t *testing.T) {
 		if !requireMethod(t, w, r, http.MethodGet) {
 			return
 		}
+		jp := 9030
+		hp := 8030
+		slp := 8040
 		jsonResponse(w, 200, APIResponse[WarehouseConnections]{
 			Success:   true,
 			RequestID: "req-013",
 			Data: WarehouseConnections{
-				WarehouseID: "WH-001",
-				Clusters: []WarehouseConnectionItem{
-					{
-						ClusterID:       "CL-SQL-001",
-						Type:            "SQL",
-						JdbcPort:        9030,
-						HttpPort:        8030,
-						StreamLoadPort:  8040,
-						PublicEndpoint:  "wh-001-sql.selectdbcloud.com",
-						PrivateEndpoint: "wh-001-sql.internal",
-						ListenerPort:    9030,
-					},
-					{
-						ClusterID:       "CL-COMP-001",
-						Type:            "COMPUTE",
-						JdbcPort:        9030,
-						HttpPort:        8030,
-						StreamLoadPort:  8040,
-						PublicEndpoint:  "wh-001-comp.selectdbcloud.com",
-						PrivateEndpoint: "wh-001-comp.internal",
-						ListenerPort:    9030,
-					},
+				PublicConnection: &WarehousePublicConnection{
+					Host:           "wh-001.selectdbcloud.com",
+					JdbcPort:       &jp,
+					HTTPPort:       &hp,
+					StreamLoadPort: &slp,
 				},
 			},
 		})
@@ -530,14 +516,14 @@ func TestGetWarehouseConnections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetWarehouseConnections: %v", err)
 	}
-	if len(conns.Clusters) != 2 {
-		t.Fatalf("expected 2 clusters, got %d", len(conns.Clusters))
+	if conns.PublicConnection == nil {
+		t.Fatal("expected publicConnection")
 	}
-	if conns.Clusters[0].JdbcPort != 9030 {
-		t.Errorf("expected jdbcPort 9030, got %d", conns.Clusters[0].JdbcPort)
+	if conns.PublicConnection.Host != "wh-001.selectdbcloud.com" {
+		t.Errorf("expected host 'wh-001.selectdbcloud.com', got %q", conns.PublicConnection.Host)
 	}
-	if conns.Clusters[0].PublicEndpoint != "wh-001-sql.selectdbcloud.com" {
-		t.Errorf("expected public endpoint, got %q", conns.Clusters[0].PublicEndpoint)
+	if conns.PublicConnection.JdbcPort == nil || *conns.PublicConnection.JdbcPort != 9030 {
+		t.Errorf("expected jdbcPort 9030")
 	}
 }
 

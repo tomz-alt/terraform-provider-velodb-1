@@ -138,15 +138,4 @@ func (c *FormationClient) GetWarehouseByocSetup(ctx context.Context, warehouseID
 	return &result.Data, nil
 }
 
-// GetWarehouseConnections returns connection endpoints for all clusters in a warehouse.
-func (c *FormationClient) GetWarehouseConnections(ctx context.Context, warehouseID string) (*WarehouseConnections, error) {
-	resp, err := c.get(ctx, fmt.Sprintf("%s/%s/connections", warehousesBasePath, warehouseID), nil)
-	if err != nil {
-		return nil, err
-	}
-	var result APIResponse[WarehouseConnections]
-	if err := parseResponse(resp, &result); err != nil {
-		return nil, err
-	}
-	return &result.Data, nil
-}
+// GetWarehouseConnections is defined in connections.go.

@@ -49,14 +49,15 @@ type CreateWarehouseRequest struct {
 }
 
 type InitialClusterRequest struct {
-	Name           string          `json:"name"`
-	Zone           *string         `json:"zone,omitempty"`
-	ComputeVcpu    int             `json:"computeVcpu"`
-	CacheGb        int             `json:"cacheGb"`
-	BillingModel   *string         `json:"billingModel,omitempty"`
-	Period         *int            `json:"period,omitempty"`
-	PeriodUnit     *string         `json:"periodUnit,omitempty"`
-	AutoPause      *AutoPauseConfig `json:"autoPause,omitempty"`
+	Name         string           `json:"name"`
+	Zone         *string          `json:"zone,omitempty"`
+	ComputeVcpu  int              `json:"computeVcpu"`
+	CacheGb      int              `json:"cacheGb"`
+	BillingModel *string          `json:"billingModel,omitempty"`
+	Period       *int             `json:"period,omitempty"`
+	PeriodUnit   *string          `json:"periodUnit,omitempty"`
+	AutoRenew    *bool            `json:"autoRenew,omitempty"`
+	AutoPause    *AutoPauseConfig `json:"autoPause,omitempty"`
 }
 
 type AutoPauseConfig struct {
@@ -105,13 +106,13 @@ type CreateWarehouseResult struct {
 }
 
 type WarehouseByocSetup struct {
-	Token                  string `json:"token,omitempty"`
-	ShellCommand           string `json:"shellCommand,omitempty"`
-	ShellCommandForNewVpc  string `json:"shellCommandForNewVpc,omitempty"`
-	URL                    string `json:"url,omitempty"`
-	DocURL                 string `json:"docUrl,omitempty"`
-	URLForNewVpc           string `json:"urlForNewVpc,omitempty"`
-	DocURLForNewVpc        string `json:"docUrlForNewVpc,omitempty"`
+	Token                 string `json:"token,omitempty"`
+	ShellCommand          string `json:"shellCommand,omitempty"`
+	ShellCommandForNewVpc string `json:"shellCommandForNewVpc,omitempty"`
+	URL                   string `json:"url,omitempty"`
+	DocURL                string `json:"docUrl,omitempty"`
+	URLForNewVpc          string `json:"urlForNewVpc,omitempty"`
+	DocURLForNewVpc       string `json:"docUrlForNewVpc,omitempty"`
 }
 
 type WarehouseSettings struct {
@@ -124,59 +125,85 @@ type WarehouseSettings struct {
 	Config            map[string]any `json:"config,omitempty"`
 }
 
-type WarehouseConnections struct {
-	WarehouseID string                    `json:"warehouseId"`
-	Clusters    []WarehouseConnectionItem `json:"clusters"`
+// --- Private connections (new) ---
+
+// WarehousePrivateConnection — response from GET /warehouses/{id}/connections/private
+type WarehousePrivateConnection struct {
+	Inbound          *WarehouseInboundConnection `json:"inbound,omitempty"`
+	OutboundServices []WarehouseOutboundService  `json:"outboundServices,omitempty"`
 }
 
-type WarehouseConnectionItem struct {
-	ClusterID         string `json:"clusterId"`
-	Type              string `json:"type"`
-	JdbcPort          int    `json:"jdbcPort"`
-	HttpPort          int    `json:"httpPort"`
-	StreamLoadPort    int    `json:"streamLoadPort"`
-	PublicEndpoint    string `json:"publicEndpoint"`
-	PrivateEndpoint   string `json:"privateEndpoint"`
-	ListenerPort      int    `json:"listenerPort"`
-	EndpointServiceID string `json:"endpointServiceId,omitempty"`
+type WarehouseInboundConnection struct {
+	EndpointServiceID   string                     `json:"endpointServiceId,omitempty"`
+	EndpointServiceName string                     `json:"endpointServiceName,omitempty"`
+	Enabled             *bool                      `json:"enabled,omitempty"`
+	ProviderAccountID   string                     `json:"providerAccountId,omitempty"`
+	Description         string                     `json:"description,omitempty"`
+	Endpoints           []WarehouseInboundEndpoint `json:"endpoints,omitempty"`
+}
+
+type WarehouseInboundEndpoint struct {
+	EndpointID     string `json:"endpointId"`
+	Domain         string `json:"domain,omitempty"`
+	Status         string `json:"status,omitempty"`
+	DNSName        string `json:"dnsName,omitempty"`
+	Description    string `json:"description,omitempty"`
+	JdbcPort       *int   `json:"jdbcPort,omitempty"`
+	HttpPort       *int   `json:"httpPort,omitempty"`
+	StreamLoadPort *int   `json:"streamLoadPort,omitempty"`
+	AdbcPort       *int   `json:"adbcPort,omitempty"`
+	StudioPort     *int   `json:"studioPort,omitempty"`
+}
+
+type WarehouseOutboundService struct {
+	EndpointServiceID   string `json:"endpointServiceId,omitempty"`
+	EndpointServiceName string `json:"endpointServiceName,omitempty"`
+	CloudProvider       string `json:"cloudProvider,omitempty"`
+	Region              string `json:"region,omitempty"`
+	Description         string `json:"description,omitempty"`
+}
+
+// WarehousePrivateEndpointCustomRequest — PUT /connections/private/endpoints/{id}
+type WarehousePrivateEndpointCustomRequest struct {
+	DNSName     *string `json:"dnsName,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
 // --- Cluster ---
 
 type CreateClusterRequest struct {
-	Name           string           `json:"name"`
-	ClusterType    string           `json:"clusterType"`
-	Zone           *string          `json:"zone,omitempty"`
-	ComputeVcpu    int              `json:"computeVcpu"`
-	CacheGb        int              `json:"cacheGb"`
-	BillingModel     *string          `json:"billingModel,omitempty"`
-	Period           *int             `json:"period,omitempty"`
-	PeriodUnit       *string          `json:"periodUnit,omitempty"`
-	AutoRenewEnabled *int             `json:"autoRenewEnabled,omitempty"`
-	AutoPause        *AutoPauseConfig `json:"autoPause,omitempty"`
+	Name         string           `json:"name"`
+	ClusterType  string           `json:"clusterType"`
+	Zone         *string          `json:"zone,omitempty"`
+	ComputeVcpu  int              `json:"computeVcpu"`
+	CacheGb      int              `json:"cacheGb"`
+	BillingModel *string          `json:"billingModel,omitempty"`
+	Period       *int             `json:"period,omitempty"`
+	PeriodUnit   *string          `json:"periodUnit,omitempty"`
+	AutoRenew    *bool            `json:"autoRenew,omitempty"`
+	AutoPause    *AutoPauseConfig `json:"autoPause,omitempty"`
 }
 
 type UpdateClusterRequest struct {
-	Name             *string          `json:"name,omitempty"`
-	ComputeVcpu      *int             `json:"computeVcpu,omitempty"`
-	CacheGb          *int             `json:"cacheGb,omitempty"`
-	BillingModel     *string          `json:"billingModel,omitempty"`
-	Period           *int             `json:"period,omitempty"`
-	PeriodUnit       *string          `json:"periodUnit,omitempty"`
-	AutoRenewEnabled *int             `json:"autoRenewEnabled,omitempty"`
-	AutoPause        *AutoPauseConfig `json:"autoPause,omitempty"`
+	Name         *string          `json:"name,omitempty"`
+	ComputeVcpu  *int             `json:"computeVcpu,omitempty"`
+	CacheGb      *int             `json:"cacheGb,omitempty"`
+	BillingModel *string          `json:"billingModel,omitempty"`
+	Period       *int             `json:"period,omitempty"`
+	PeriodUnit   *string          `json:"periodUnit,omitempty"`
+	AutoRenew    *bool            `json:"autoRenew,omitempty"`
+	AutoPause    *AutoPauseConfig `json:"autoPause,omitempty"`
 }
 
 type RenewClusterRequest struct {
-	Period           int    `json:"period"`
-	PeriodUnit       string `json:"periodUnit"`
-	AutoRenewEnabled *int   `json:"autoRenewEnabled,omitempty"`
+	Period    int   `json:"period"`
+	AutoRenew *bool `json:"autoRenew,omitempty"`
 }
 
 type ConvertToSubscriptionRequest struct {
 	Period            int    `json:"period"`
 	PeriodUnit        string `json:"periodUnit"`
-	AutoRenewEnabled  *int   `json:"autoRenewEnabled,omitempty"`
+	AutoRenew         *bool  `json:"autoRenew,omitempty"`
 	OnDemandNodeCount *int   `json:"onDemandNodeCount,omitempty"`
 }
 
@@ -187,22 +214,55 @@ type ClusterConnectionInfo struct {
 }
 
 type ClusterItem struct {
-	ClusterID      string                 `json:"clusterId"`
-	WarehouseID    string                 `json:"warehouseId"`
-	Name           string                 `json:"name"`
-	Status         string                 `json:"status"`
-	ClusterType    string                 `json:"clusterType,omitempty"`
-	CloudProvider  string                 `json:"cloudProvider,omitempty"`
-	Region         string                 `json:"region,omitempty"`
-	Zone           string                 `json:"zone,omitempty"`
-	DiskSumSize    int                    `json:"diskSumSize,omitempty"`
-	PayType        string                 `json:"payType,omitempty"`
-	Period         int                    `json:"period,omitempty"`
-	PeriodUnit     string                 `json:"periodUnit,omitempty"`
-	CreatedAt      *time.Time             `json:"createdAt,omitempty"`
-	StartedAt      *time.Time             `json:"startedAt,omitempty"`
-	ExpireTime     *time.Time             `json:"expireTime,omitempty"`
-	ConnectionInfo *ClusterConnectionInfo `json:"connectionInfo,omitempty"`
+	ClusterID             string                 `json:"clusterId"`
+	WarehouseID           string                 `json:"warehouseId"`
+	Name                  string                 `json:"name"`
+	Status                string                 `json:"status"`
+	ClusterType           string                 `json:"clusterType,omitempty"`
+	CloudProvider         string                 `json:"cloudProvider,omitempty"`
+	Region                string                 `json:"region,omitempty"`
+	Zone                  string                 `json:"zone,omitempty"`
+	DiskSumSize           int                    `json:"diskSumSize,omitempty"`
+	BillingModel          string                 `json:"billingModel,omitempty"`
+	Period                int                    `json:"period,omitempty"`
+	PeriodUnit            string                 `json:"periodUnit,omitempty"`
+	NodeCount             int                    `json:"nodeCount,omitempty"`
+	OnDemandNodeCount     int                    `json:"onDemandNodeCount,omitempty"`
+	SubscriptionNodeCount int                    `json:"subscriptionNodeCount,omitempty"`
+	CreatedAt             *time.Time             `json:"createdAt,omitempty"`
+	StartedAt             *time.Time             `json:"startedAt,omitempty"`
+	ExpireTime            *time.Time             `json:"expireTime,omitempty"`
+	ConnectionInfo        *ClusterConnectionInfo `json:"connectionInfo,omitempty"`
+}
+
+// ClusterDetail — GET /clusters/{id} returns richer mixed-billing info
+type ClusterDetail struct {
+	ClusterItem
+	BillingSummary *ClusterBillingSummary `json:"billingSummary,omitempty"`
+	BillingPools   *ClusterBillingPools   `json:"billingPools,omitempty"`
+}
+
+type ClusterBillingSummary struct {
+	IsMixedBilling        bool `json:"isMixedBilling"`
+	NodeCount             int  `json:"nodeCount,omitempty"`
+	OnDemandNodeCount     int  `json:"onDemandNodeCount,omitempty"`
+	SubscriptionNodeCount int  `json:"subscriptionNodeCount,omitempty"`
+	TotalCpu              int  `json:"totalCpu,omitempty"`
+	TotalDiskSizeGb       int  `json:"totalDiskSizeGb,omitempty"`
+}
+
+type ClusterBillingPools struct {
+	OnDemand     *ClusterBillingPool `json:"onDemand,omitempty"`
+	Subscription *ClusterBillingPool `json:"subscription,omitempty"`
+}
+
+type ClusterBillingPool struct {
+	NodeCount  int        `json:"nodeCount,omitempty"`
+	Cpu        int        `json:"cpu,omitempty"`
+	DiskSizeGb int        `json:"diskSizeGb,omitempty"`
+	Period     int        `json:"period,omitempty"`
+	PeriodUnit string     `json:"periodUnit,omitempty"`
+	ExpireTime *time.Time `json:"expireTime,omitempty"`
 }
 
 type CreateClusterResult struct {
@@ -221,10 +281,10 @@ type ListWarehousesOptions struct {
 }
 
 type ListClustersOptions struct {
-	Page        int
-	Size        int
-	Keyword     string
-	Status      string
-	ClusterType string
-	PayType     string
+	Page         int
+	Size         int
+	Keyword      string
+	Status       string
+	ClusterType  string
+	BillingModel string
 }

@@ -27,13 +27,13 @@ func (c *FormationClient) CreateCluster(ctx context.Context, warehouseID string,
 	return &result.Data, nil
 }
 
-// GetCluster returns a single cluster.
-func (c *FormationClient) GetCluster(ctx context.Context, warehouseID, clusterID string) (*ClusterItem, error) {
+// GetCluster returns a single cluster with billingSummary and billingPools populated.
+func (c *FormationClient) GetCluster(ctx context.Context, warehouseID, clusterID string) (*ClusterDetail, error) {
 	resp, err := c.get(ctx, clusterPath(warehouseID, clusterID), nil)
 	if err != nil {
 		return nil, err
 	}
-	var result APIResponse[ClusterItem]
+	var result APIResponse[ClusterDetail]
 	if err := parseResponse(resp, &result); err != nil {
 		return nil, err
 	}
@@ -54,8 +54,8 @@ func (c *FormationClient) ListClusters(ctx context.Context, warehouseID string, 
 		if opts.ClusterType != "" {
 			q.Set("clusterType", opts.ClusterType)
 		}
-		if opts.PayType != "" {
-			q.Set("payType", opts.PayType)
+		if opts.BillingModel != "" {
+			q.Set("billingModel", opts.BillingModel)
 		}
 	}
 	resp, err := c.get(ctx, clustersBasePath(warehouseID), q)

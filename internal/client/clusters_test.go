@@ -300,9 +300,6 @@ func TestRenewCluster(t *testing.T) {
 		if req.Period != 1 {
 			t.Errorf("expected period 1, got %d", req.Period)
 		}
-		if req.PeriodUnit != "Month" {
-			t.Errorf("expected periodUnit 'Month', got %q", req.PeriodUnit)
-		}
 
 		jsonResponse(w, 200, APIResponse[struct{}]{
 			Success:   true,
@@ -311,8 +308,7 @@ func TestRenewCluster(t *testing.T) {
 	})
 
 	err := client.RenewCluster(context.Background(), "WH-001", "CL-001", &RenewClusterRequest{
-		Period:     1,
-		PeriodUnit: "Month",
+		Period: 1,
 	})
 	if err != nil {
 		t.Fatalf("RenewCluster: %v", err)

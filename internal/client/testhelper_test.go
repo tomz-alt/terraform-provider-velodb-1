@@ -89,7 +89,7 @@ func mockCluster(id, warehouseID, name string) ClusterItem {
 		Region:        "cn-beijing",
 		Zone:          "cn-beijing-k",
 		DiskSumSize:   100,
-		PayType:       "PostPaid",
+		BillingModel:  "on_demand",
 		CreatedAt:     &t,
 		StartedAt:     &t,
 		ConnectionInfo: &ClusterConnectionInfo{

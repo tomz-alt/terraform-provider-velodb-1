@@ -97,18 +97,12 @@ func mockAPIServer(t *testing.T) *httptest.Server {
 			"success":   true,
 			"requestId": "mock-conns",
 			"data": map[string]any{
-				"warehouseId": "WH-MOCK-001",
-				"clusters": []map[string]any{
-					{
-						"clusterId":       "CL-MOCK-001",
-						"type":            "SQL",
-						"jdbcPort":        9030,
-						"httpPort":        8030,
-						"streamLoadPort":  8040,
-						"publicEndpoint":  "mock.selectdbcloud.com",
-						"privateEndpoint": "mock.internal",
-						"listenerPort":    9030,
-					},
+				"publicConnection": map[string]any{
+					"host":               "mock.selectdbcloud.com",
+					"jdbcPort":           9030,
+					"httpPort":           8030,
+					"streamLoadPort":     8040,
+					"publicAccessPolicy": "ALLOW_ALL",
 				},
 			},
 		})
@@ -261,12 +255,15 @@ func TestAccClusterResource(t *testing.T) {
 			{
 				Config: testProviderConfig(ts) + `
 resource "velodb_cluster" "test" {
-  warehouse_id   = "WH-MOCK-001"
-  name           = "mock-cluster"
-  cluster_type   = "COMPUTE"
-  compute_vcpu   = 4
-  cache_gb       = 100
-  desired_state  = "running"
+  warehouse_id  = "WH-MOCK-001"
+  name          = "mock-cluster"
+  cluster_type  = "COMPUTE"
+  desired_state = "running"
+
+  on_demand {
+    compute_vcpu = 4
+    cache_gb     = 100
+  }
 
   auto_pause {
     enabled              = true
@@ -295,7 +292,7 @@ resource "velodb_cluster" "test" {
 				ImportState:             true,
 				ImportStateId:           "WH-MOCK-001/CL-MOCK-001",
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"desired_state", "billing_method", "auto_pause", "timeouts", "compute_vcpu", "cache_gb"},
+				ImportStateVerifyIgnore: []string{"desired_state", "on_demand", "subscription", "auto_pause", "timeouts"},
 			},
 		},
 	})
@@ -365,11 +362,11 @@ data "velodb_warehouse_connections" "test" {
 }
 `,
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "clusters.#", "1"),
-					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "clusters.0.cluster_id", "CL-MOCK-001"),
-					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "clusters.0.jdbc_port", "9030"),
-					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "clusters.0.http_port", "8030"),
-					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "clusters.0.public_endpoint", "mock.selectdbcloud.com"),
+					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "public_connection.#", "1"),
+					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "public_connection.0.host", "mock.selectdbcloud.com"),
+					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "public_connection.0.jdbc_port", "9030"),
+					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "public_connection.0.http_port", "8030"),
+					resource.TestCheckResourceAttr("data.velodb_warehouse_connections.test", "public_connection.0.public_access_policy", "ALLOW_ALL"),
 				),
 			},
 		},
