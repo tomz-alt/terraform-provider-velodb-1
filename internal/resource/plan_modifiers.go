@@ -40,9 +40,18 @@ func (m cacheGbAutoScaleOnVcpuChange) PlanModifyInt64(ctx context.Context, req p
 		return
 	}
 
-	// If compute_vcpu is changing, mark cache_gb as unknown
-	if !stateVcpu.IsNull() && !planVcpu.IsNull() && !stateVcpu.Equal(planVcpu) {
-		resp.PlanValue = types.Int64Unknown()
+	// Only mark cache_gb unknown if compute_vcpu is INCREASING (API auto-scales disk up).
+	// Disk is one-way per API spec, so vcpu scale-in doesn't change cache.
+	if !stateVcpu.IsNull() && !planVcpu.IsNull() {
+		if planVcpu.ValueInt64() > stateVcpu.ValueInt64() {
+			// Only if config didn't explicitly change cache_gb either
+			var stateCache, configCache types.Int64
+			req.State.GetAttribute(ctx, req.Path, &stateCache)
+			req.Config.GetAttribute(ctx, req.Path, &configCache)
+			if !stateCache.IsNull() && !configCache.IsNull() && stateCache.Equal(configCache) {
+				resp.PlanValue = types.Int64Unknown()
+			}
+		}
 	}
-	_ = path.Empty() // silence unused import if paths change
+	_ = path.Empty() // silence unused import
 }
