@@ -496,10 +496,12 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 	subRemoved := stateSub != nil && planSub == nil
 	odRemoved := stateOd != nil && planOd == nil
 
-	if subRemoved || odRemoved {
+	// Pool removal: API accepts PATCH with billingModel=<pool>, computeVcpu=0 to remove that pool.
+	// At least one pool must remain.
+	if subRemoved && odRemoved {
 		resp.Diagnostics.AddError(
-			"Pool removal not supported",
-			"Removing a billing pool from an existing cluster is not supported by the API. Taint and recreate the cluster.",
+			"Cannot remove all billing pools",
+			"At least one of subscription{} or on_demand{} must be present. To destroy the cluster, remove the resource entirely.",
 		)
 		return
 	}
@@ -554,6 +556,32 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 			}
 			return cl.Status, nil
 		}, []string{"Running"}, client.FailedStatuses, updateTimeout, 10*time.Second)
+	}
+
+	// 2b. Pool removal: PATCH billingModel=<pool>, computeVcpu=0 to remove a pool
+	if subRemoved {
+		zero := 0
+		req := &client.UpdateClusterRequest{
+			BillingModel: stringPtr("subscription"),
+			ComputeVcpu:  &zero,
+		}
+		if err := r.client.UpdateCluster(ctx, warehouseID, clusterID, req); err != nil {
+			resp.Diagnostics.AddError("Error removing subscription pool", err.Error())
+			return
+		}
+		r.waitStable(ctx, warehouseID, clusterID, updateTimeout, &resp.Diagnostics)
+	}
+	if odRemoved {
+		zero := 0
+		req := &client.UpdateClusterRequest{
+			BillingModel: stringPtr("on_demand"),
+			ComputeVcpu:  &zero,
+		}
+		if err := r.client.UpdateCluster(ctx, warehouseID, clusterID, req); err != nil {
+			resp.Diagnostics.AddError("Error removing on_demand pool", err.Error())
+			return
+		}
+		r.waitStable(ctx, warehouseID, clusterID, updateTimeout, &resp.Diagnostics)
 	}
 
 	// 3. Add subscription pool to pure on_demand cluster
