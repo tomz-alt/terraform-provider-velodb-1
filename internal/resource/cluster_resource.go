@@ -345,25 +345,26 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddWarning("Cluster created but not yet Running", err.Error())
 	}
 
-	// Mixed billing: if both pools configured, add the second pool
+	// Mixed billing: if both pools configured, add the subscription pool via PATCH
+	// Per API spec: PATCH with billingModel=subscription + period/periodUnit
+	// is the main path to add opposite billing pool to an existing cluster.
 	if sub != nil && od != nil {
-		// We created on_demand primary; add subscription pool
-		conv := &client.ConvertToSubscriptionRequest{
-			Period:     int(sub.Period.ValueInt64()),
-			PeriodUnit: sub.PeriodUnit.ValueString(),
+		vcpu := int(sub.ComputeVcpu.ValueInt64())
+		cache := int(sub.CacheGb.ValueInt64())
+		period := int(sub.Period.ValueInt64())
+		periodUnit := sub.PeriodUnit.ValueString()
+		req := &client.UpdateClusterRequest{
+			BillingModel: stringPtr("subscription"),
+			ComputeVcpu:  &vcpu,
+			CacheGb:      &cache,
+			Period:       &period,
+			PeriodUnit:   &periodUnit,
 		}
 		if !sub.AutoRenew.IsNull() && !sub.AutoRenew.IsUnknown() {
 			b := sub.AutoRenew.ValueBool()
-			conv.AutoRenew = &b
+			req.AutoRenew = &b
 		}
-		// Preserve existing on-demand capacity — node count inferred from on-demand vcpu/16
-		odNodes := int(od.ComputeVcpu.ValueInt64()) / 16
-		if odNodes < 1 {
-			odNodes = 1
-		}
-		conv.OnDemandNodeCount = &odNodes
-
-		if err := r.client.ConvertClusterToSubscription(ctx, warehouseID, clusterID, conv); err != nil {
+		if err := r.client.UpdateCluster(ctx, warehouseID, clusterID, req); err != nil {
 			resp.Diagnostics.AddError("Error adding subscription pool after cluster creation", err.Error())
 			return
 		}
@@ -519,23 +520,25 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 	}
 
 	// 3. Add subscription pool to pure on_demand cluster
+	// Per API spec: PATCH /clusters/{id} with billingModel=subscription + period/periodUnit
+	// is the main path to add a subscription pool to an existing on_demand cluster.
 	if subAdded && stateOd != nil {
-		// Use convert-to-subscription with onDemandNodeCount to retain existing on_demand
-		conv := &client.ConvertToSubscriptionRequest{
-			Period:     int(planSub.Period.ValueInt64()),
-			PeriodUnit: planSub.PeriodUnit.ValueString(),
+		vcpu := int(planSub.ComputeVcpu.ValueInt64())
+		cache := int(planSub.CacheGb.ValueInt64())
+		period := int(planSub.Period.ValueInt64())
+		periodUnit := planSub.PeriodUnit.ValueString()
+		req := &client.UpdateClusterRequest{
+			BillingModel: stringPtr("subscription"),
+			ComputeVcpu:  &vcpu,
+			CacheGb:      &cache,
+			Period:       &period,
+			PeriodUnit:   &periodUnit,
 		}
 		if !planSub.AutoRenew.IsNull() && !planSub.AutoRenew.IsUnknown() {
 			b := planSub.AutoRenew.ValueBool()
-			conv.AutoRenew = &b
+			req.AutoRenew = &b
 		}
-		odNodes := int(planOd.ComputeVcpu.ValueInt64()) / 16
-		if odNodes < 1 {
-			odNodes = 1
-		}
-		conv.OnDemandNodeCount = &odNodes
-
-		if err := r.client.ConvertClusterToSubscription(ctx, warehouseID, clusterID, conv); err != nil {
+		if err := r.client.UpdateCluster(ctx, warehouseID, clusterID, req); err != nil {
 			resp.Diagnostics.AddError("Error adding subscription pool", err.Error())
 			return
 		}
