@@ -403,22 +403,33 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	// Preserve config-only fields that the API doesn't return
-	priorSub := state.Subscription
-	priorOd := state.OnDemand
+	// Preserve only what truly can't be read back
 	priorAutoPause := state.AutoPause
 	priorRebootTrigger := state.RebootTrigger
 	priorTimeouts := state.Timeouts
+	priorSubAutoRenew := types.BoolNull()
+	if priorSub := r.extractSubscriptionPool(ctx, state.Subscription, &resp.Diagnostics); priorSub != nil {
+		priorSubAutoRenew = priorSub.AutoRenew
+	}
 
 	r.readClusterIntoState(ctx, state.WarehouseID.ValueString(), state.ID.ValueString(), &state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// desired_state should reflect the actual cluster status (drift detection).
-	// readClusterIntoState already sets it via statusToDesiredState.
-	state.Subscription = priorSub
-	state.OnDemand = priorOd
+	// readClusterIntoState derives Subscription and OnDemand blocks from billingPools.
+	// We must preserve auto_renew (not returned by API) in the subscription block if it's still present.
+	if !state.Subscription.IsNull() && !state.Subscription.IsUnknown() && !priorSubAutoRenew.IsNull() {
+		var newPools []SubscriptionPoolModel
+		resp.Diagnostics.Append(state.Subscription.ElementsAs(ctx, &newPools, false)...)
+		if len(newPools) > 0 {
+			newPools[0].AutoRenew = priorSubAutoRenew
+			newList, d := types.ListValueFrom(ctx, state.Subscription.ElementType(ctx), newPools)
+			resp.Diagnostics.Append(d...)
+			state.Subscription = newList
+		}
+	}
+
 	state.AutoPause = priorAutoPause
 	state.RebootTrigger = priorRebootTrigger
 	state.Timeouts = priorTimeouts
@@ -807,6 +818,27 @@ func connectionInfoAttrTypes() map[string]attr.Type {
 	}
 }
 
+func subscriptionPoolObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"compute_vcpu": types.Int64Type,
+			"cache_gb":     types.Int64Type,
+			"period":       types.Int64Type,
+			"period_unit":  types.StringType,
+			"auto_renew":   types.BoolType,
+		},
+	}
+}
+
+func onDemandPoolObjectType() types.ObjectType {
+	return types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"compute_vcpu": types.Int64Type,
+			"cache_gb":     types.Int64Type,
+		},
+	}
+}
+
 func (r *ClusterResource) readClusterIntoState(ctx context.Context, warehouseID, clusterID string, state *ClusterResourceModel, diags *diag.Diagnostics) {
 	cl, err := r.client.GetCluster(ctx, warehouseID, clusterID)
 	if err != nil {
@@ -860,6 +892,41 @@ func (r *ClusterResource) readClusterIntoState(ctx context.Context, warehouseID,
 	}
 
 	state.DesiredState = types.StringValue(statusToDesiredState(cl.Status))
+
+	// Billing pools — derive from API billingPools for drift detection
+	subObjType := subscriptionPoolObjectType()
+	odObjType := onDemandPoolObjectType()
+
+	if cl.BillingPools != nil && cl.BillingPools.Subscription != nil {
+		sp := cl.BillingPools.Subscription
+		obj, d := types.ObjectValue(subObjType.AttrTypes, map[string]attr.Value{
+			"compute_vcpu": types.Int64Value(int64(sp.Cpu)),
+			"cache_gb":     types.Int64Value(int64(sp.DiskSizeGb)),
+			"period":       types.Int64Value(int64(sp.Period)),
+			"period_unit":  stringOrNull(sp.PeriodUnit),
+			"auto_renew":   types.BoolNull(), // API doesn't return this; preserved by Read()
+		})
+		diags.Append(d...)
+		lst, d := types.ListValue(subObjType, []attr.Value{obj})
+		diags.Append(d...)
+		state.Subscription = lst
+	} else {
+		state.Subscription = types.ListNull(subObjType)
+	}
+
+	if cl.BillingPools != nil && cl.BillingPools.OnDemand != nil {
+		op := cl.BillingPools.OnDemand
+		obj, d := types.ObjectValue(odObjType.AttrTypes, map[string]attr.Value{
+			"compute_vcpu": types.Int64Value(int64(op.Cpu)),
+			"cache_gb":     types.Int64Value(int64(op.DiskSizeGb)),
+		})
+		diags.Append(d...)
+		lst, d := types.ListValue(odObjType, []attr.Value{obj})
+		diags.Append(d...)
+		state.OnDemand = lst
+	} else {
+		state.OnDemand = types.ListNull(odObjType)
+	}
 
 	// Connection info
 	if cl.ConnectionInfo != nil {
