@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
@@ -62,12 +63,13 @@ type WarehouseResourceModel struct {
 	InitialCluster           types.List    `tfsdk:"initial_cluster"`
 	Timeouts                 timeouts.Value `tfsdk:"timeouts"`
 	// Computed
-	Status     types.String `tfsdk:"status"`
-	Zone       types.String `tfsdk:"zone"`
-	PayType    types.String `tfsdk:"pay_type"`
-	CreatedAt  types.String `tfsdk:"created_at"`
-	ExpireTime types.String `tfsdk:"expire_time"`
-	ByocSetup  types.List   `tfsdk:"byoc_setup"`
+	Status           types.String `tfsdk:"status"`
+	Zone             types.String `tfsdk:"zone"`
+	PayType          types.String `tfsdk:"pay_type"`
+	CreatedAt        types.String `tfsdk:"created_at"`
+	ExpireTime       types.String `tfsdk:"expire_time"`
+	ByocSetup        types.List   `tfsdk:"byoc_setup"`
+	InitialClusterID types.String `tfsdk:"initial_cluster_id"`
 }
 
 type InitialClusterModel struct {
@@ -273,6 +275,13 @@ func (r *WarehouseResource) Schema(ctx context.Context, _ resource.SchemaRequest
 			"expire_time": schema.StringAttribute{
 				Description: "Expiration time when available.",
 				Computed:    true,
+			},
+			"initial_cluster_id": schema.StringAttribute{
+				Description: "ID of the initial cluster created with the warehouse. Use this to import the cluster as a velodb_cluster resource (e.g., to delete it after you add other clusters).",
+				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -681,6 +690,36 @@ func (r *WarehouseResource) readWarehouseIntoState(ctx context.Context, warehous
 		state.ExpireTime = types.StringValue(wh.ExpireTime.Format(time.RFC3339))
 	} else {
 		state.ExpireTime = types.StringNull()
+	}
+
+	// Find initial_cluster ID by listing clusters and matching the configured name
+	if state.InitialClusterID.IsNull() || state.InitialClusterID.IsUnknown() {
+		initialName := ""
+		if !state.InitialCluster.IsNull() && !state.InitialCluster.IsUnknown() {
+			var ics []InitialClusterModel
+			state.InitialCluster.ElementsAs(ctx, &ics, false)
+			if len(ics) > 0 {
+				initialName = ics[0].Name.ValueString()
+			}
+		}
+		if initialName == "" {
+			initialName = "initial_cluster" // default name set by API
+		}
+		clusters, err := r.client.ListClusters(ctx, warehouseID, &client.ListClustersOptions{Page: 1, Size: 50})
+		if err == nil {
+			for _, c := range clusters.Data {
+				if strings.HasPrefix(c.ClusterID, "m-") {
+					continue
+				}
+				if c.Name == initialName {
+					state.InitialClusterID = types.StringValue(c.ClusterID)
+					break
+				}
+			}
+		}
+		if state.InitialClusterID.IsNull() || state.InitialClusterID.IsUnknown() {
+			state.InitialClusterID = types.StringNull()
+		}
 	}
 
 	// Try to get BYOC setup for BYOC warehouses
