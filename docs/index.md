@@ -19,7 +19,7 @@ The VeloDB provider allows you to manage [VeloDB Cloud](https://www.selectdb.com
 | [`velodb_cluster`](./resources/cluster.md) | Cluster with `subscription{}` / `on_demand{}` pool blocks, mixed billing, pause/resume/reboot |
 | [`velodb_warehouse_public_access_policy`](./resources/warehouse_public_access_policy.md) | IP allowlist for public access |
 | [`velodb_warehouse_private_endpoint`](./resources/warehouse_private_endpoint.md) | Custom DNS on inbound PrivateLink endpoints |
-| [`velodb_private_link_endpoint_service`](./resources/private_link_endpoint_service.md) | Outbound PrivateLink service registration (⚠️ sandbox API broken) |
+| [`velodb_private_link_endpoint_service`](./resources/private_link_endpoint_service.md) | Outbound PrivateLink service registration |
 
 **Data Sources** (read existing state):
 
@@ -45,7 +45,7 @@ The VeloDB provider allows you to manage [VeloDB Cloud](https://www.selectdb.com
 | Import all resources | ✅ Supported |
 | IP allowlist | ✅ Supported |
 | PrivateLink inbound custom DNS | ✅ Supported |
-| PrivateLink outbound service | ❌ Sandbox API broken |
+| PrivateLink outbound service | ✅ Supported (AWS requires both `endpoint_service_id` and `endpoint_service_name`) |
 | Delete prepaid (subscription) cluster | ❌ API billing semantics — wait for expiration |
 | Delete warehouse's last cluster | ❌ API restriction — delete warehouse instead |
 | Billing / audit / consumption data sources | ❌ Out of scope (use dashboards) |
