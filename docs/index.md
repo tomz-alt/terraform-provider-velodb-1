@@ -41,7 +41,9 @@ The VeloDB provider allows you to manage [VeloDB Cloud](https://www.selectdb.com
 | Pool add / remove / independent resize | ✅ Supported |
 | Pause / resume / reboot | ✅ Supported |
 | Password rotation | ✅ Supported |
-| Version upgrade (`core_version`) | ✅ Supported |
+| Version upgrade (`core_version_id`, int64) | ✅ Supported — discover valid IDs via the `velodb_warehouse_versions` data source |
+| Maintenance window (`maintenance_window`, UTC hours) | ✅ Supported — replaces the v0 `maintainability_*` string fields |
+| Upgrade policy (`upgrade_policy`) | ✅ Supported |
 | Import all resources | ✅ Supported |
 | IP allowlist | ✅ Supported |
 | PrivateLink inbound custom DNS | ✅ Supported |

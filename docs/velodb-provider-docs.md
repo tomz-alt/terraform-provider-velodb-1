@@ -98,12 +98,11 @@ resource "velodb_warehouse" "main" {
   admin_password         = var.admin_password
   admin_password_version = 1
 
-  maintainability_start_time = "02:00"
-  maintainability_end_time   = "06:00"
-
-  advanced_settings = jsonencode({
-    enableTde = 0
-  })
+  upgrade_policy = "automatic"
+  maintenance_window = {
+    start_hour_utc = 2
+    end_hour_utc   = 6
+  }
 
   initial_cluster {
     name         = "sql-primary"
@@ -130,14 +129,16 @@ resource "velodb_warehouse" "main" {
 # ─── ETL Cluster (always running, auto-pauses after idle) ────
 
 resource "velodb_cluster" "etl" {
-  warehouse_id   = velodb_warehouse.main.id
-  name           = "compute-etl"
-  cluster_type   = "COMPUTE"
-  zone           = "cn-beijing-k"
-  compute_vcpu   = 32
-  cache_gb       = 1600
-  billing_method = "on_demand"
-  desired_state  = "running"
+  warehouse_id  = velodb_warehouse.main.id
+  name          = "compute-etl"
+  cluster_type  = "COMPUTE"
+  zone          = "cn-beijing-k"
+  desired_state = "running"
+
+  on_demand {
+    compute_vcpu = 32
+    cache_gb     = 1600
+  }
 
   auto_pause {
     enabled              = true
@@ -153,14 +154,15 @@ resource "velodb_cluster" "etl" {
 # ─── Dev Cluster (paused by default for cost savings) ────────
 
 resource "velodb_cluster" "dev" {
-  warehouse_id   = velodb_warehouse.main.id
-  name           = "compute-dev"
-  cluster_type   = "COMPUTE"
-  zone           = "cn-beijing-k"
-  compute_vcpu   = 4
-  cache_gb       = 100
-  billing_method = "on_demand"
-  desired_state  = "paused"
+  warehouse_id  = velodb_warehouse.main.id
+  name          = "compute-dev"
+  cluster_type  = "COMPUTE"
+  zone          = "cn-beijing-k"
+  desired_state = "paused"
+
+  on_demand {
+    compute_vcpu = 4
+  }
 
   auto_pause {
     enabled              = true
@@ -235,7 +237,11 @@ resource "velodb_warehouse" "analytics" {
   admin_password         = var.admin_password
   admin_password_version = 1
 
-  advanced_settings = jsonencode({ enableTde = 0 })
+  upgrade_policy = "automatic"
+  maintenance_window = {
+    start_hour_utc = 2
+    end_hour_utc   = 6
+  }
 
   initial_cluster {
     name         = "default"
@@ -269,17 +275,17 @@ resource "velodb_warehouse" "production" {
   admin_password         = var.admin_password
   admin_password_version = 1
 
-  core_version = "3.0.3"
-
-  maintainability_start_time = "02:00"
-  maintainability_end_time   = "06:00"
+  upgrade_policy = "automatic"
+  maintenance_window = {
+    start_hour_utc = 2
+    end_hour_utc   = 6
+  }
 
   initial_cluster {
     name           = "default-compute"
     zone           = "cn-beijing-k"
     compute_vcpu   = 8
     cache_gb       = 400
-    billing_method = "monthly"
     auto_pause {
       enabled              = true
       idle_timeout_minutes = 30
@@ -350,14 +356,22 @@ resource "velodb_warehouse" "example" {
 
 ### Example: Version Upgrade
 
-Change `core_version` — the provider calls the upgrade API and waits:
+The new Management API takes a numeric `targetVersionId`. Use the `velodb_warehouse_versions` data source to discover valid IDs and pass one as `core_version_id`:
 
 ```terraform
+data "velodb_warehouse_versions" "available" {
+  warehouse_id = velodb_warehouse.example.id
+}
+
 resource "velodb_warehouse" "example" {
   # ...existing config...
-  core_version = "3.1.0"  # was "3.0.3"
+  core_version_id = data.velodb_warehouse_versions.available.default_id
 }
 ```
+
+The provider triggers the upgrade and polls for completion when `core_version_id` changes. The previously-settable `core_version` (string) is now read-only — it reports the human-readable version returned by the API.
+
+~> If `data.velodb_warehouse_versions.available.versions` is empty, the warehouse already runs the latest available engine. Setting `core_version_id = 0` is rejected by a client-side guard.
 
 ### Example: Manage / delete the initial cluster
 
@@ -416,28 +430,29 @@ resource "velodb_cluster" "initial" {
 
 #### Optional
 
-- `admin_password` (String, Sensitive) Administrator password. Set on creation, used for password rotation.
-- `admin_password_version` (Number) Increment to trigger a password change. Must be used with `admin_password`.
-- `advanced_settings` (String) Advanced settings as a JSON string. Use `jsonencode()`.
-- `bucket_name` (String) Object storage bucket name for Wizard mode. Forces new resource.
-- `core_version` (String) Core version. Changing triggers an upgrade workflow. Computed if not set.
-- `setup_mode` (String) BYOC creation mode: `Template` or `Wizard`. Forces new resource.
-- `credential_id` (Number) Credential identifier for Wizard mode. Forces new resource.
+- `admin_password` (String, Sensitive) Administrator password. Set on creation, used for password rotation. Bumping `admin_password_version` rotates without requiring a value change.
+- `admin_password_version` (Number) Increment to trigger a password change without changing the password value. Either changing `admin_password` or bumping this number triggers `POST /settings/password`.
+- `bucket_name` (String) Object storage bucket name for advanced BYOC mode. Forces new resource.
+- `core_version_id` (Number) Target engine version ID — changing it triggers an upgrade. Discover valid IDs via the `velodb_warehouse_versions` data source. Setting `0` is rejected by a client-side guard.
+- `setup_mode` (String) BYOC creation mode: `guided` or `advanced`. Forces new resource.
+- `credential_id` (Number) Credential ID for advanced BYOC. Forces new resource.
 - `data_credential_arn` (String) Data plane credential ARN. Forces new resource.
 - `deployment_credential_arn` (String) Deployment credential ARN. Forces new resource.
 - `endpoint_id` (String) Private endpoint identifier. Forces new resource.
-- `maintainability_end_time` (String) Maintenance window end time (e.g., `06:00`).
-- `maintainability_start_time` (String) Maintenance window start time (e.g., `02:00`).
-- `network_config_id` (Number) Network configuration identifier for Wizard mode. Forces new resource.
+- `maintenance_window` (Attribute, Single Nested) `{ start_hour_utc, end_hour_utc }` — UTC hours `0–23`, validated client-side.
+- `network_config_id` (Number) Network config ID for advanced BYOC. Forces new resource.
 - `security_group_id` (String) Security group identifier. Forces new resource.
 - `subnet_id` (String) Subnet identifier. Forces new resource.
 - `tags` (Map of String) Warehouse tags. Set at creation time.
 - `vpc_id` (String) VPC identifier for Template mode. Forces new resource.
 - `vpc_mode` (String) VPC hint for Template mode: `existing` or `new`. Forces new resource.
 
+- `upgrade_policy` (String) Warehouse upgrade policy (e.g. `automatic`). Length must be at least 1 — empty strings are rejected client-side. Once set, removing from configuration retains the API value (the API does not support clearing it).
+
 #### Read-Only
 
 - `byoc_setup` (List of Object) BYOC setup guidance for BYOC warehouses. Each item contains: `token`, `shell_command`, `shell_command_for_new_vpc`, `url`, `doc_url`, `url_for_new_vpc`, `doc_url_for_new_vpc`.
+- `core_version` (String) Current human-readable engine version (e.g. `3.0.8`). Read-only — set `core_version_id` to trigger upgrades.
 - `created_at` (String) Creation time in RFC 3339 format.
 - `expire_time` (String) Expiration time when available.
 - `id` (String) Warehouse identifier (e.g., `ALBJ07YE`).
@@ -453,12 +468,12 @@ Create-only block for the cluster provisioned with the warehouse.
 | Attribute | Type | Required | Description |
 |---|---|---|---|
 | `name` | String | Yes | Cluster name |
-| `compute_vcpu` | Number | Yes | Compute vCPUs |
-| `cache_gb` | Number | Yes | Cache capacity in GB |
-| `zone` | String | No | Availability zone |
-| `billing_method` | String | No | `monthly` or `on_demand` |
-| `period` | Number | No | Prepaid subscription length |
-| `period_unit` | String | No | `Month`, `Year`, or `Week` |
+| `compute_vcpu` | Number | Yes | Compute vCPUs (minimum `4`; valid: `4`, `8`, `16`, multiples of `16`). |
+| `cache_gb` | Number | Yes | Cache capacity in GB (minimum `100`). |
+| `zone` | String | Yes | Availability zone. The new API requires a zone for the initial cluster. |
+| `billing_model` | String | No | `monthly` or `on_demand`. (Runtime-only — not part of the new API spec; preserved for backward compatibility.) |
+| `period` | Number | No | Prepaid subscription length (only meaningful when `billing_model = "monthly"`). |
+| `period_unit` | String | No | `Month`, `Year`, or `Week`. |
 
 #### Nested: `initial_cluster.auto_pause`
 
@@ -500,7 +515,7 @@ import {
 }
 ```
 
-> **Note:** `admin_password`, `admin_password_version`, `initial_cluster`, and `advanced_settings` are not populated on import.
+> **Note:** `admin_password`, `admin_password_version`, and `initial_cluster` are not returned by the API and will not be populated on import. Add them to your configuration manually after importing.
 
 ---
 
@@ -508,18 +523,22 @@ import {
 
 Manages a cluster within a VeloDB Cloud warehouse. Clusters are the compute units that run queries.
 
-### Example: Basic Compute Cluster
+Clusters use **pool blocks** — one or both of `subscription{}` and `on_demand{}`. Use a single `on_demand{}` for pure pay-as-you-go, a single `subscription{}` for prepaid, or both for mixed billing.
+
+### Example: Basic on-demand cluster
 
 ```terraform
 resource "velodb_cluster" "etl" {
-  warehouse_id   = velodb_warehouse.main.id
-  name           = "compute-etl"
-  cluster_type   = "COMPUTE"
-  zone           = "cn-beijing-k"
-  compute_vcpu   = 4
-  cache_gb       = 100
-  billing_method = "on_demand"
-  desired_state  = "running"
+  warehouse_id  = velodb_warehouse.main.id
+  name          = "compute-etl"
+  cluster_type  = "COMPUTE"
+  zone          = "us-east-1a"
+  desired_state = "running"
+
+  on_demand {
+    compute_vcpu = 8
+    cache_gb     = 100   # optional — omit to let the API auto-scale
+  }
 
   auto_pause {
     enabled              = true
@@ -537,76 +556,100 @@ output "etl_endpoint" {
 }
 ```
 
-### Example: Paused Dev Cluster
+### Example: paused dev cluster
 
 ```terraform
 resource "velodb_cluster" "dev" {
-  warehouse_id   = velodb_warehouse.main.id
-  name           = "compute-dev"
-  cluster_type   = "COMPUTE"
-  zone           = "cn-beijing-k"
-  compute_vcpu   = 4
-  cache_gb       = 100
-  billing_method = "on_demand"
-  desired_state  = "paused"
+  warehouse_id  = velodb_warehouse.main.id
+  name          = "compute-dev"
+  cluster_type  = "COMPUTE"
+  zone          = "us-east-1a"
+  desired_state = "paused"
 
-  auto_pause {
-    enabled              = true
-    idle_timeout_minutes = 5
+  on_demand {
+    compute_vcpu = 4
   }
 }
 ```
 
-### Example: Prepaid Monthly Cluster
+### Example: prepaid (subscription) cluster
 
 ```terraform
 resource "velodb_cluster" "prepaid" {
-  warehouse_id       = velodb_warehouse.main.id
-  name               = "sql-primary"
-  cluster_type       = "SQL"
-  zone               = "cn-beijing-k"
-  compute_vcpu       = 16
-  cache_gb           = 800
-  billing_method     = "monthly"
-  period             = 1
-  period_unit        = "Month"
-  auto_renew_enabled = 1
-  desired_state      = "running"
+  warehouse_id  = velodb_warehouse.main.id
+  name          = "sql-primary"
+  cluster_type  = "SQL"
+  zone          = "us-east-1a"
+  desired_state = "running"
 
-  auto_pause {
-    enabled = false
+  subscription {
+    compute_vcpu = 16
+    cache_gb     = 800
+    period       = 1
+    period_unit  = "Month"
+    auto_renew   = true
+  }
+
+  auto_pause { enabled = false }
+}
+```
+
+### Example: mixed billing (both pools)
+
+```terraform
+resource "velodb_cluster" "mixed" {
+  warehouse_id = velodb_warehouse.main.id
+  name         = "compute-mixed"
+  cluster_type = "COMPUTE"
+  zone         = "us-east-1a"
+
+  subscription {
+    compute_vcpu = 16
+    cache_gb     = 800
+    period       = 1
+    period_unit  = "Month"
+    auto_renew   = false
+  }
+  on_demand {
+    compute_vcpu = 8
   }
 }
 ```
 
-### Day-2 Operations
+### Day-2 operations
 
-**Resize** — change `compute_vcpu` and/or `cache_gb`:
+**Resize** — change `compute_vcpu` and/or `cache_gb` inside the pool block. The API rule "computeVcpu and cacheGb cannot be updated at the same time" is handled by the provider via sequential PATCHes:
 
-```terraform
-resource "velodb_cluster" "etl" {
-  # ...
-  compute_vcpu = 8    # was 4
-  cache_gb     = 500  # was 100
+```hcl
+# fragment of velodb_cluster
+on_demand {
+  compute_vcpu = 16   # was 8
+  cache_gb     = 500  # was 100 — applied after the vcpu PATCH
 }
 ```
 
-**Pause** — change `desired_state`:
+**Auto-scale** — omit `cache_gb` and let the API scale disk proportionally to vcpu changes:
 
-```terraform
-resource "velodb_cluster" "etl" {
-  # ...
-  desired_state = "paused"   # triggers POST /actions {"action":"pause"}
+```hcl
+# fragment of velodb_cluster
+on_demand {
+  compute_vcpu = 16   # cache_gb auto-scales server-side
 }
 ```
 
-**Resume** — change back:
+**Pause / resume** — change `desired_state` on the resource:
 
-```terraform
-resource "velodb_cluster" "etl" {
-  # ...
-  desired_state = "running"  # triggers POST /actions {"action":"resume"}
-}
+```hcl
+# fragment of velodb_cluster
+desired_state = "paused"   # triggers POST /clusters/{id}/pause
+desired_state = "running"  # triggers POST /clusters/{id}/resume
+```
+
+**Reboot** — bump `reboot_trigger`:
+
+```hcl
+# fragment of velodb_cluster
+reboot_trigger = 1   # any change triggers POST /clusters/{id}/reboot
 ```
 
 ### desired_state Behavior
@@ -621,33 +664,55 @@ resource "velodb_cluster" "etl" {
 
 #### Required
 
-- `cache_gb` (Number) Cache capacity in GB. Changing triggers resize.
 - `cluster_type` (String) `SQL`, `COMPUTE`, or `OBSERVER`. Forces new resource.
-- `compute_vcpu` (Number) Compute vCPUs. Changing triggers resize.
 - `name` (String) Cluster display name.
 - `warehouse_id` (String) Parent warehouse identifier. Forces new resource.
 
+At least one of:
+
+- `on_demand` (Block, Max: 1) Pay-as-you-go pool.
+- `subscription` (Block, Max: 1) Prepaid pool. Requires `period` and `period_unit`.
+
 #### Optional
 
-- `auto_renew_enabled` (Number) Auto-renew flag for prepaid billing.
-- `billing_method` (String) `on_demand` or `monthly`.
-- `desired_state` (String) `running` or `paused`. Changes trigger cluster actions.
-- `period` (Number) Prepaid subscription length.
-- `period_unit` (String) `Month`, `Year`, or `Week`.
+- `auto_pause` (Block, Max: 1) Auto-pause configuration.
+- `desired_state` (String) `running` or `paused`. Changes trigger `POST /clusters/{id}/pause` or `/resume`.
+- `reboot_trigger` (Number) Increment to trigger `POST /clusters/{id}/reboot`.
 - `zone` (String) Availability zone. Forces new resource.
+
+#### Nested: `subscription`
+
+| Attribute | Type | Required | Description |
+|---|---|---|---|
+| `compute_vcpu` | Number | Yes | vCPUs (minimum `4`; valid: `4`, `8`, `16`, multiples of `16`). |
+| `period` | Number | Yes | Subscription length. |
+| `period_unit` | String | Yes | `Month` or `Year`. **In-place changes force replacement.** |
+| `cache_gb` | Number | No | Disk GB (minimum `100`). When omitted, the API auto-scales disk proportionally to `compute_vcpu`. |
+| `auto_renew` | Boolean | No | Auto-renew at expiration. |
+
+#### Nested: `on_demand`
+
+| Attribute | Type | Required | Description |
+|---|---|---|---|
+| `compute_vcpu` | Number | Yes | vCPUs (minimum `4`; valid: `4`, `8`, `16`, multiples of `16`). |
+| `cache_gb` | Number | No | Disk GB (minimum `100`). When omitted, the API auto-scales disk proportionally to `compute_vcpu`. |
 
 #### Read-Only
 
 - `cloud_provider` (String) Inherited from parent warehouse.
 - `connection_info` (List of Object) Each item: `public_endpoint` (String), `private_endpoint` (String), `listener_port` (Number).
 - `created_at` (String) Creation time in RFC 3339 format.
-- `disk_sum_size` (Number) Current disk capacity in GB.
 - `expire_time` (String) Expiration time when available.
 - `id` (String) Cluster identifier (e.g., `c-1997tallv8chbkdhej`).
-- `pay_type` (String) `PostPaid` or `PrePaid`.
+- `is_mixed_billing` (Boolean) `true` when both pools are present.
+- `node_count` (Number) Total nodes across all pools.
+- `on_demand_node_count` (Number) Nodes in the on-demand pool.
 - `region` (String) Inherited from parent warehouse.
 - `started_at` (String) Start time in RFC 3339 format.
 - `status` (String) Current observed status: `Creating`, `Running`, `Resizing`, `Adjusting`, `Upgrading`, `Suspending`, `Resuming`, `Stopping`, `Starting`, `Restarting`, `Deleting`, `Suspended`, `Stopped`, `Deleted`, `CreateFailed`.
+- `subscription_node_count` (Number) Nodes in the subscription pool.
+- `total_cpu` (Number) Total CPU across all pools.
+- `total_disk_gb` (Number) Total disk GB across all pools.
 
 #### Nested: `auto_pause`
 
@@ -686,7 +751,7 @@ import {
 }
 ```
 
-> **Note:** `compute_vcpu`, `cache_gb`, `billing_method`, `desired_state`, and `auto_pause` are not populated on import.
+> **Note on import:** `subscription{}`/`on_demand{}` blocks are populated from the API's `billingPools` response. `auto_pause`, `desired_state`, and `reboot_trigger` are not returned by the API and need to be re-declared in your configuration after import.
 
 ---
 
