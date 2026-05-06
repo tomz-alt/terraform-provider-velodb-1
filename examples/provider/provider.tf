@@ -2,7 +2,7 @@ terraform {
   required_providers {
     velodb = {
       source  = "velodb/velodb"
-      version = "~> 0.1"
+      version = "~> 1.0"
     }
   }
 }
@@ -14,8 +14,8 @@ provider "velodb" {
 
 variable "velodb_host" {
   type        = string
-  description = "VeloDB API host"
-  default     = "api.selectdbcloud.com"
+  description = "VeloDB Management API host"
+  default     = "sandbox.velodb.io"
 }
 
 variable "velodb_api_key" {
